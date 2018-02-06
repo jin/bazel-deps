@@ -50,7 +50,6 @@ object Decoders {
       } yield MavenServer(id, contentType, url)
     }
 
-
   implicit val mavenGroupKey: KeyDecoder[MavenGroup] = KeyDecoder.instance { s =>
     Some(MavenGroup(s))
   }
@@ -58,7 +57,14 @@ object Decoders {
     Some(ArtifactOrProject(s))
   }
 
-  implicit def vcpDecoder: Decoder[VersionConflictPolicy] =
+  implicit val packaging: Decoder[Packaging] = Decoder.decodeString.emap {
+    case "aar" => Right(Packaging.AAR)
+    case "jar" => Right(Packaging.JAR)
+    case "bundle" => Right(Packaging.Bundle)
+    case other => Left(s"Unrecognized packaging type: $other")
+  }
+
+  implicit val vcpDecoder: Decoder[VersionConflictPolicy] =
     Decoder.decodeString.emap {
       case "fixed" => Right(VersionConflictPolicy.Fixed)
       case "fail" => Right(VersionConflictPolicy.Fail)
@@ -67,6 +73,7 @@ object Decoders {
     }
 
   implicit def optionsDecoder: Decoder[Options] = {
+
     implicit val versionLang: Decoder[Language] =
       Decoder.decodeString.emap {
         case "java" => Right(Language.Java)

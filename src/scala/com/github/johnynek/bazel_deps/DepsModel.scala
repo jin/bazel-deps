@@ -270,14 +270,14 @@ object MavenArtifactId {
   }
 }
 
-case class MavenCoordinate(group: MavenGroup, artifact: MavenArtifactId, version: Version) {
-  def unversioned: UnversionedCoordinate = UnversionedCoordinate(group, artifact)
-  def asString: String = s"${group.asString}:${artifact.asString}:${version.asString}"
+case class MavenCoordinate(group: MavenGroup, artifact: MavenArtifactId, version: Version, packaging: Packaging) {
+  def unversioned: UnversionedCoordinate = UnversionedCoordinate(group, artifact, packaging)
+  def asString: String = s"${group.asString}:${artifact.asString}:${packaging.asString}:${version.asString}"
 
   def toDependencies(l: Language): Dependencies =
     Dependencies(Map(group ->
       Map(ArtifactOrProject(artifact.asString) ->
-        ProjectRecord(l, Some(version), None, None, None, None))))
+        ProjectRecord(l, Some(packaging), Some(version), None, None, None, None))))
 }
 
 object MavenCoordinate {
@@ -290,15 +290,16 @@ object MavenCoordinate {
 
   def parse(s: String): ValidatedNel[String, MavenCoordinate] =
     s.split(":") match {
-      case Array(g, a, v) => Validated.valid(MavenCoordinate(MavenGroup(g), MavenArtifactId(a), Version(v)))
-      case other => Validated.invalidNel(s"expected exactly three :, got $s")
+      case Array(g, a, v) => Validated.valid(MavenCoordinate(MavenGroup(g), MavenArtifactId(a), Version(v), Packaging.JAR))
+      case Array(g, a, p, v) => Validated.valid(MavenCoordinate(MavenGroup(g), MavenArtifactId(a), Version(v), Packaging.fromString(p)))
+      case _ => Validated.invalidNel(s"expected exactly two or three :, got $s")
     }
 
   def apply(u: UnversionedCoordinate, v: Version): MavenCoordinate =
-    MavenCoordinate(u.group, u.artifact, v)
+    MavenCoordinate(u.group, u.artifact, v, Packaging.JAR)
 
   implicit def mvnCoordOrd: Ordering[MavenCoordinate] = Ordering.by { m: MavenCoordinate =>
-    (m.group.asString, m.artifact.asString, m.version)
+    (m.group.asString, m.artifact.asString, m.version, m.packaging.asString)
   }
 }
 
@@ -306,9 +307,13 @@ sealed abstract class Language {
   def asString: String
   def asOptionsString: String
   def mavenCoord(g: MavenGroup, a: ArtifactOrProject, v: Version): MavenCoordinate
+  def mavenCoord(g: MavenGroup, a: ArtifactOrProject, v: Version, p: Packaging): MavenCoordinate
   def mavenCoord(g: MavenGroup, a: ArtifactOrProject, sp: Subproject, v: Version): MavenCoordinate
+  def mavenCoord(g: MavenGroup, a: ArtifactOrProject, sp: Subproject, v: Version, p: Packaging): MavenCoordinate
   def unversioned(g: MavenGroup, a: ArtifactOrProject): UnversionedCoordinate
+  def unversioned(g: MavenGroup, a: ArtifactOrProject, p: Packaging): UnversionedCoordinate
   def unversioned(g: MavenGroup, a: ArtifactOrProject, sp: Subproject): UnversionedCoordinate
+  def unversioned(g: MavenGroup, a: ArtifactOrProject, sp: Subproject, p: Packaging): UnversionedCoordinate
 
   def unmangle(m: MavenCoordinate): MavenCoordinate
 }
@@ -318,16 +323,28 @@ object Language {
     def asString = "java"
     def asOptionsString = asString
     def mavenCoord(g: MavenGroup, a: ArtifactOrProject, v: Version): MavenCoordinate =
-      MavenCoordinate(g, MavenArtifactId(a), v)
+      MavenCoordinate(g, MavenArtifactId(a), v, Packaging.JAR)
+
+    def mavenCoord(g: MavenGroup, a: ArtifactOrProject, v: Version, p: Packaging): MavenCoordinate =
+      MavenCoordinate(g, MavenArtifactId(a), v, p)
 
     def mavenCoord(g: MavenGroup, a: ArtifactOrProject, sp: Subproject, v: Version): MavenCoordinate =
-      MavenCoordinate(g, MavenArtifactId(a, sp), v)
+      MavenCoordinate(g, MavenArtifactId(a, sp), v, Packaging.JAR)
+
+    def mavenCoord(g: MavenGroup, a: ArtifactOrProject, sp: Subproject, v: Version, p: Packaging): MavenCoordinate =
+      MavenCoordinate(g, MavenArtifactId(a, sp), v, p)
 
     def unversioned(g: MavenGroup, a: ArtifactOrProject): UnversionedCoordinate =
-      UnversionedCoordinate(g, MavenArtifactId(a))
+      UnversionedCoordinate(g, MavenArtifactId(a), Packaging.JAR)
+
+    def unversioned(g: MavenGroup, a: ArtifactOrProject, p: Packaging): UnversionedCoordinate =
+      UnversionedCoordinate(g, MavenArtifactId(a), p)
 
     def unversioned(g: MavenGroup, a: ArtifactOrProject, sp: Subproject): UnversionedCoordinate =
-      UnversionedCoordinate(g, MavenArtifactId(a, sp))
+      UnversionedCoordinate(g, MavenArtifactId(a, sp), Packaging.JAR)
+
+    def unversioned(g: MavenGroup, a: ArtifactOrProject, sp: Subproject, p: Packaging): UnversionedCoordinate =
+      UnversionedCoordinate(g, MavenArtifactId(a, sp), p)
 
     def unmangle(m: MavenCoordinate) = m
   }
@@ -347,16 +364,28 @@ object Language {
       else a
 
     def unversioned(g: MavenGroup, a: ArtifactOrProject): UnversionedCoordinate =
-      UnversionedCoordinate(g, add(MavenArtifactId(a)))
+      UnversionedCoordinate(g, MavenArtifactId(a), Packaging.JAR)
+
+    def unversioned(g: MavenGroup, a: ArtifactOrProject, p: Packaging): UnversionedCoordinate =
+      UnversionedCoordinate(g, MavenArtifactId(a), p)
 
     def unversioned(g: MavenGroup, a: ArtifactOrProject, sp: Subproject): UnversionedCoordinate =
-      UnversionedCoordinate(g, add(MavenArtifactId(a, sp)))
+      UnversionedCoordinate(g, MavenArtifactId(a, sp), Packaging.JAR)
+
+    def unversioned(g: MavenGroup, a: ArtifactOrProject, sp: Subproject, p: Packaging): UnversionedCoordinate =
+      UnversionedCoordinate(g, MavenArtifactId(a, sp), p)
 
     def mavenCoord(g: MavenGroup, a: ArtifactOrProject, v: Version): MavenCoordinate =
-      MavenCoordinate(g, add(MavenArtifactId(a)), v)
+      MavenCoordinate(g, add(MavenArtifactId(a)), v, Packaging.JAR)
+
+    def mavenCoord(g: MavenGroup, a: ArtifactOrProject, v: Version, p: Packaging): MavenCoordinate =
+      MavenCoordinate(g, MavenArtifactId(a), v, p)
 
     def mavenCoord(g: MavenGroup, a: ArtifactOrProject, sp: Subproject, v: Version): MavenCoordinate =
-      MavenCoordinate(g, add(MavenArtifactId(a, sp)), v)
+      MavenCoordinate(g, add(MavenArtifactId(a, sp)), v, Packaging.JAR)
+
+    def mavenCoord(g: MavenGroup, a: ArtifactOrProject, sp: Subproject, v: Version, p: Packaging): MavenCoordinate =
+      MavenCoordinate(g, add(MavenArtifactId(a, sp)), v, p)
 
     def removeSuffix(s: String): Option[String] =
       if (s.endsWith(suffix)) Some(s.dropRight(suffix.size))
@@ -366,10 +395,10 @@ object Language {
       uv.asString.endsWith(suffix)
 
     def unmangle(m: MavenCoordinate) = {
-      val MavenCoordinate(g, a, v) = m
+      val MavenCoordinate(g, a, v, p) = m
       removeSuffix(a.asString) match {
         case None => m
-        case Some(a) => MavenCoordinate(g, MavenArtifactId(a), v)
+        case Some(a) => MavenCoordinate(g, MavenArtifactId(a), v, p)
       }
     }
   }
@@ -381,7 +410,7 @@ object Language {
   implicit val ordering: Ordering[Language] = Ordering.by(_.asString)
 }
 
-case class UnversionedCoordinate(group: MavenGroup, artifact: MavenArtifactId) {
+case class UnversionedCoordinate(group: MavenGroup, artifact: MavenArtifactId, packaging: Packaging) {
   def asString: String = s"${group.asString}:${artifact.asString}"
   /**
    * This is a bazel-safe name to use as a remote repo name
@@ -408,18 +437,11 @@ case class UnversionedCoordinate(group: MavenGroup, artifact: MavenArtifactId) {
   def bindTarget(namePrefix: NamePrefix): String = s"//external:${toBindingName(namePrefix)}"
 }
 
-case class ProjectRecord(
-  lang: Language,
-  version: Option[Version],
-  modules: Option[Set[Subproject]],
-  exports: Option[Set[(MavenGroup, ArtifactOrProject)]],
-  exclude: Option[Set[(MavenGroup, ArtifactOrProject)]],
-  processorClasses: Option[Set[ProcessorClass]]) {
-
+case class ProjectRecord(lang: Language, packaging: Option[Packaging], version: Option[Version], modules: Option[Set[Subproject]], exports: Option[Set[(MavenGroup, ArtifactOrProject)]], exclude: Option[Set[(MavenGroup, ArtifactOrProject)]], processorClasses: Option[Set[ProcessorClass]]) {
 
   // Cache this
   override lazy val hashCode: Int =
-    (lang, version, modules, exports, exclude, processorClasses).hashCode
+    (lang, version, modules, exports, exclude, processorClasses, packaging).hashCode
 
   def flatten(ap: ArtifactOrProject): List[(ArtifactOrProject, ProjectRecord)] =
     getModules match {
@@ -463,15 +485,15 @@ case class ProjectRecord(
     ap: ArtifactOrProject): List[MavenCoordinate] =
     version.fold(List.empty[MavenCoordinate]) { v =>
       getModules match {
-        case Nil => List(lang.mavenCoord(g, ap, v))
-        case mods => mods.map { m => lang.mavenCoord(g, ap, m, v) }
+        case Nil => List(lang.mavenCoord(g, ap, v, packaging.getOrElse(Packaging.JAR)))
+        case mods => mods.map { m => lang.mavenCoord(g, ap, m, v, packaging.getOrElse(Packaging.JAR)) }
       }
     }
 
-  def allDependencies(g: MavenGroup, ap: ArtifactOrProject): List[UnversionedCoordinate] =
+  def allDependencies(g: MavenGroup, ap: ArtifactOrProject, p: Packaging): List[UnversionedCoordinate] =
     getModules match {
-      case Nil => List(lang.unversioned(g, ap))
-      case mods => mods.map { m => lang.unversioned(g, ap, m) }
+      case Nil => List(lang.unversioned(g, ap, p))
+      case mods => mods.map { m => lang.unversioned(g, ap, m, p) }
     }
 
   private def toList(s: Set[(MavenGroup, ArtifactOrProject)]): List[(MavenGroup, ArtifactOrProject)] =
@@ -490,6 +512,7 @@ case class ProjectRecord(
 
     val record = List(List(("lang", Doc.text(lang.asString))),
       version.toList.map { v => ("version", quoteDoc(v.asString)) },
+      packaging.toList.map { p => ("packaging", Doc.text(p.asString)) },
       modules.toList.map { ms =>
         ("modules", list(ms.map(_.asString).toList.sorted)(quoteDoc)) },
       exports.toList.map { ms =>
@@ -546,22 +569,22 @@ case class Dependencies(toMap: Map[MavenGroup, Map[ArtifactOrProject, ProjectRec
   }
 
   // Returns 1 if there is exactly one candidate that matches.
-  def unversionedCoordinatesOf(g: MavenGroup, a: ArtifactOrProject): Option[UnversionedCoordinate] =
+  def unversionedCoordinatesOf(g: MavenGroup, a: ArtifactOrProject, p: Packaging): Option[UnversionedCoordinate] =
     toMap.get(g).flatMap { ap =>
       a.splitSubprojects match {
         case Nil =>
-          ap.get(a).map(_.allDependencies(g, a)) match {
+          ap.get(a).map(_.allDependencies(g, a, p)) match {
             case Some(h :: Nil) => Some(h)
             case other => None // 0 or more than one
           }
         case parts =>
           // This can be split, but may not be:
-          val unsplit = ap.get(a).map(_.lang.unversioned(g, a)).toSet
+          val unsplit = ap.get(a).map(_.lang.unversioned(g, a, p)).toSet
           val uvcs = unsplit.union(parts.flatMap { case (proj, subproj) =>
             ap.get(proj)
               .map { pr => pr.getModules.filter(_ == subproj).map((_, pr.lang)) }
               .getOrElse(Nil)
-              .map { case (m, lang) => lang.unversioned(g, proj, m) }
+              .map { case (m, lang) => lang.unversioned(g, proj, m, p) }
           }
           .toSet)
         if (uvcs.size == 1) Some(uvcs.head) else None
@@ -574,12 +597,12 @@ case class Dependencies(toMap: Map[MavenGroup, Map[ArtifactOrProject, ProjectRec
     recordOf(u).flatMap(_.exports) match {
       case None => Right(Nil)
       case Some(l) =>
-        def uv(g: MavenGroup, a: ArtifactOrProject): Option[UnversionedCoordinate] =
-          unversionedCoordinatesOf(g, a).orElse(r.unversionedCoordinatesOf(g, a))
+        def uv(g: MavenGroup, a: ArtifactOrProject, p: Packaging): Option[UnversionedCoordinate] =
+          unversionedCoordinatesOf(g, a, p).orElse(r.unversionedCoordinatesOf(g, a, p))
 
-        val errs = l.filter { case (g, a) => uv(g, a).isEmpty }
+        val errs = l.filter { case (g, a) => uv(g, a, Packaging.JAR).isEmpty }
         if (errs.nonEmpty) Left(l.toList)
-        else Right(l.toList.flatMap { case (g, a) => uv(g, a) })
+        else Right(l.toList.flatMap { case (g, a) => uv(g, a, Packaging.JAR) })
     }
 
   private val coordToProj: Map[MavenCoordinate, ProjectRecord] =
@@ -593,7 +616,7 @@ case class Dependencies(toMap: Map[MavenGroup, Map[ArtifactOrProject, ProjectRec
     (for {
       (g, m) <- toMap.iterator
       (a, p) <- m.iterator
-      uv <- p.allDependencies(g, a)
+      uv <- p.allDependencies(g, a, p.packaging.getOrElse(Packaging.JAR))
     } yield (uv -> p)).toMap
 
   val roots: Set[MavenCoordinate] = coordToProj.keySet
@@ -617,8 +640,8 @@ case class Dependencies(toMap: Map[MavenGroup, Map[ArtifactOrProject, ProjectRec
       case None => Set.empty
       case Some(uvs) =>
         uvs.map { case (g, a) =>
-          unversionedCoordinatesOf(g, a)
-            .getOrElse(UnversionedCoordinate(g, MavenArtifactId(a)))
+          unversionedCoordinatesOf(g, a, Packaging.JAR)
+            .getOrElse(UnversionedCoordinate(g, MavenArtifactId(a), Packaging.JAR))
         }.toSet
     }
 }
@@ -845,15 +868,15 @@ case class Replacements(toMap: Map[MavenGroup, Map[ArtifactOrProject, Replacemen
   val unversionedToReplacementRecord: Map[UnversionedCoordinate, ReplacementRecord] =
     toMap.flatMap { case (g, projs) =>
       projs.map { case (a, r) =>
-        r.lang.unversioned(g, a) -> r
+        r.lang.unversioned(g, a, Packaging.JAR) -> r
       }
     }
 
-  def unversionedCoordinatesOf(g: MavenGroup, a: ArtifactOrProject): Option[UnversionedCoordinate] =
+  def unversionedCoordinatesOf(g: MavenGroup, a: ArtifactOrProject, p: Packaging): Option[UnversionedCoordinate] =
     for {
       m <- toMap.get(g)
       r <- m.get(a)
-    } yield r.lang.unversioned(g, a)
+    } yield r.lang.unversioned(g, a, p)
 
   def get(uv: UnversionedCoordinate): Option[ReplacementRecord] =
     unversionedToReplacementRecord.get(uv)
@@ -971,6 +994,22 @@ object DirectoryName {
    */
   implicit val dirNameSemigroup: Semigroup[DirectoryName] = new Semigroup[DirectoryName] {
     def combine(a: DirectoryName, b: DirectoryName) = b
+  }
+}
+
+sealed abstract class Packaging(val asString: String)
+object Packaging {
+  def default: Packaging = Packaging.JAR
+
+  case object JAR extends Packaging("jar")
+  case object AAR extends Packaging("aar")
+  case object Bundle extends Packaging("bundle")
+
+  def fromString(value: String): Packaging = {
+    Vector(AAR, JAR, Bundle).find(_.asString == value) match {
+      case Some(p) => p
+      case None => Packaging.JAR
+    }
   }
 }
 

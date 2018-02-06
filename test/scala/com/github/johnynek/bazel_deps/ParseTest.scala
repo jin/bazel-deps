@@ -25,6 +25,7 @@ class ParseTest extends FunSuite {
             Map(ArtifactOrProject("scalding") ->
               ProjectRecord(
                 Language.Scala.default,
+                None,
                 Some(Version("0.16.0")),
                 Some(Set("core", "args", "date").map(Subproject(_))),
                 None,
@@ -32,6 +33,32 @@ class ParseTest extends FunSuite {
                 None))),
           None,
           None)))
+  }
+
+  test("parse a file with custom packaging, yaml") {
+    val str = """dependencies:
+                |  com.android.support.espresso:
+                |    espresso-core:
+                |      packaging: aar
+                |      lang: java
+                |      version: "3.0.0"
+                |""".stripMargin('|')
+
+    assert(Decoders.decodeModel(Yaml, str) ==
+      Right(Model(
+        Dependencies(
+          MavenGroup("com.android.support.espresso") ->
+            Map(ArtifactOrProject("espresso-core") ->
+              ProjectRecord(
+                Language.Java,
+                Some(Packaging.AAR),
+                Some(Version("3.0.0")),
+                None,
+                None,
+                None,
+                None))),
+        None,
+        None)))
   }
   test("parse a file with options, yaml") {
     val str = """dependencies:
@@ -54,6 +81,7 @@ class ParseTest extends FunSuite {
             Map(ArtifactOrProject("scalding") ->
               ProjectRecord(
                 Language.Scala(Version("2.11.7"), true),
+                None,
                 Some(Version("0.16.0")),
                 Some(Set("core", "args", "date").map(Subproject(_))),
                 None,
@@ -91,6 +119,7 @@ class ParseTest extends FunSuite {
             Map(ArtifactOrProject("scalding") ->
               ProjectRecord(
                 Language.Scala(Version("2.11.7"), true),
+                None,
                 Some(Version("0.16.0")),
                 Some(Set("", "core", "args", "date").map(Subproject(_))),
                 None,
@@ -129,6 +158,7 @@ class ParseTest extends FunSuite {
             Map(ArtifactOrProject("auto-value") ->
               ProjectRecord(
                 Language.Java,
+                None,
                 Some(Version("1.5")),
                 None,
                 None,

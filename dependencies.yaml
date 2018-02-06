@@ -4,8 +4,9 @@ options:
     - load("@io_bazel_rules_scala//scala:scala_import.bzl", "scala_import")
   resolvers: 
     - id: "mavencentral"
-      type: "default"
       url: https://repo.maven.apache.org/maven2/
+    - id: "jcenter"
+      url: https://jcenter.bintray.com/
   transitivity: runtime_deps
   versionConflictPolicy: highest
 
@@ -13,6 +14,12 @@ dependencies:
   com.chuusai:
     shapeless:
       lang: scala
+
+  # com.android.support.test:
+  #   runner:
+  #     packaging: aar
+  #     version: "1.0.0"
+  #     lang: java
   
   com.fasterxml.jackson.dataformat:
     jackson-dataformat-yaml:
@@ -67,6 +74,7 @@ dependencies:
   
   org.scalatest:
     scalatest:
+      packaging: bundle
       exports: 
         - "org.scalactic:scalactic"
       lang: scala

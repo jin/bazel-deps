@@ -63,7 +63,7 @@ class Resolver(servers: List[MavenServer], resolverCachePath: Path) {
     val ex = ml.dependencies.excludes(m.unversioned)
     val exclusions = new util.ArrayList[Exclusion]()
     for (elem <- ex){
-      val exclusion = new Exclusion(elem.group.asString, elem.artifact.asString, "", "jar")
+      val exclusion = new Exclusion(elem.group.asString, elem.artifact.asString, "", m.packaging.asString)
       exclusions.add(exclusion)
     }
     collectRequest.setRoot(new Dependency(new DefaultArtifact(m.asString), "", false, exclusions))
@@ -71,15 +71,15 @@ class Resolver(servers: List[MavenServer], resolverCachePath: Path) {
     system.collectDependencies(session, collectRequest);
   }
 
-  def getShas(m: Iterable[MavenCoordinate]): Map[MavenCoordinate, Try[ResolvedSha1Value]] = {
+  def getShas(ms: Iterable[MavenCoordinate]): Map[MavenCoordinate, Try[ResolvedSha1Value]] = {
     /**
      * We try to request the jar.sha1 file, if that fails, we request the jar
      * and do the sha1.
      */
-    def toArtifactRequest(m: MavenCoordinate, extension: String): ArtifactRequest = {
+    def toArtifactRequest(m: MavenCoordinate): ArtifactRequest = {
       val classifier = null // We don't use this
       val art = new DefaultArtifact(
-        m.group.asString, m.artifact.asString, classifier, extension, m.version.asString)
+        m.group.asString, m.artifact.asString, classifier, m.packaging.asString, m.version.asString)
       val context = null
       new ArtifactRequest(art, repositories, context)
     }
@@ -88,22 +88,23 @@ class Resolver(servers: List[MavenServer], resolverCachePath: Path) {
       tmap: Try[Map[K, Try[V]]]): Map[K, Try[V]] =
       ms.map { coord => coord -> tmap.flatMap(_(coord)) }.toMap
 
-    def getExt(ms: Seq[MavenCoordinate], ext: String)(toSha: File => Try[Sha1Value]): Map[MavenCoordinate, Try[ResolvedSha1Value]] =
+    def getExt(ms: Seq[MavenCoordinate], getShaFile: Boolean)(toSha: File => Try[Sha1Value]): Map[MavenCoordinate, Try[ResolvedSha1Value]] =
       liftKeys(ms, Try {
         val resp =
           system.resolveArtifacts(session,
-            ms.map(toArtifactRequest(_, ext)).toList.asJava)
+            ms.map(toArtifactRequest).toList.asJava)
             .asScala
             .iterator
 
         ms.iterator.zip(resp).map { case (coord, r) =>
-          coord -> getFile(coord, ext, r).flatMap(f => toSha(f).map(sha1Value => ResolvedSha1Value(sha1Value, r.getRepository.getId)))
+          val extension = if (getShaFile) coord.packaging.asString else coord.packaging.asString + ".sha"
+          coord -> getFile(coord, "." + extension, r).flatMap(f => toSha(f).map(sha1Value => ResolvedSha1Value(sha1Value, r.getRepository.getId)))
         }.toMap
       })
 
-    val shas = getExt(m.toList, "jar.sha1")(readShaContents)
+    val shas = getExt(ms.toList, true)(readShaContents)
     val computes =
-      getExt(shas.collect { case (m, Failure(_)) => m }.toList, "jar")(computeShaOf)
+      getExt(shas.collect { case (m, Failure(_)) => m }.toList, false)(computeShaOf)
 
     shas ++ computes
   }
@@ -170,9 +171,7 @@ class Resolver(servers: List[MavenServer], resolverCachePath: Path) {
 
     def coord(a: Dependency): MavenCoordinate = {
       val artifact = a.getArtifact
-      MavenCoordinate(MavenGroup(artifact.getGroupId),
-        MavenArtifactId(artifact.getArtifactId),
-        Version(artifact.getVersion))
+      MavenCoordinate(MavenGroup(artifact.getGroupId), MavenArtifactId(artifact.getArtifactId), Version(artifact.getVersion), Packaging.fromString(artifact.getExtension))
     }
 
     def addEdgeTo(d: Dependency): Boolean =

@@ -159,12 +159,7 @@ object Tool {
       externalDeps.iterator.map { case (d, lang) =>
         (MavenGroup(d.groupId),
           ArtifactOrProject(d.artifactId),
-          ProjectRecord(lang,
-            Some(Version(d.version)),
-            None,
-            None,
-            None,
-            None))
+          ProjectRecord(lang, Some(Packaging.JAR), Some(Version(d.version)), None, None, None, None))
       }
       .toList
 
@@ -265,7 +260,7 @@ maven_dependencies(maven_load)
           else Language.Java
 
         (dep, Label.localTarget(List("3rdparty", "jvm"),
-          UnversionedCoordinate(MavenGroup(resolvedDep.groupId), MavenArtifactId(resolvedDep.artifactId)),
+          UnversionedCoordinate(MavenGroup(resolvedDep.groupId), MavenArtifactId(resolvedDep.artifactId), Packaging.JAR),
           lang))
       }
       .toMap

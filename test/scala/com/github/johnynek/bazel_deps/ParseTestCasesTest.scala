@@ -13,7 +13,15 @@ class ParseTestCasesTest extends FunSuite {
       Map(
         MavenGroup("n2rr") ->
           Map(
-            ArtifactOrProject("zmup") -> ProjectRecord(Java,Some(Version("019")),Some(Set(Subproject("wcv"))),Some(Set((MavenGroup("j9szw4"),ArtifactOrProject("i")))),None,None)
+            ArtifactOrProject("zmup") ->
+              ProjectRecord(
+                Java,
+                Some(Packaging.JAR),
+                Some(Version("019")),
+                Some(Set(Subproject("wcv"))),
+                Some(Set((MavenGroup("j9szw4"), ArtifactOrProject("i")))),
+                None,
+                None)
           )
         )),Some(Replacements(Map())),None)
 

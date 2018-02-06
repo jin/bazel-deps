@@ -25,12 +25,17 @@ object MavenGraphGen {
       patch <- Gen.choose(0, 1000)
     } yield Version(s"$major.$minor.$patch")
 
+  val genPackaging: Gen[Packaging] = {
+    Gen.oneOf(Packaging.AAR, Packaging.JAR)
+  }
+
   val genMavenCoord: Gen[MavenCoordinate] =
     for {
       g <- genMavenGroup
       a <- genMavenArt
       v <- genVersion
-    } yield MavenCoordinate(g, a, v)
+      p <- genPackaging
+    } yield MavenCoordinate(g, a, v, p)
 
   def zip[A, B](a: Gen[A], b: Gen[B]): Gen[(A, B)] = a.flatMap { aa => b.map((aa, _)) }
 
@@ -55,18 +60,19 @@ object MavenGraphGen {
     }
   }
 
-  def decorateRandomly[A, B, C](g: Graph[A, Unit], b: Gen[B])(fn: (A, B) => C): Gen[Graph[C, Unit]] =
-    Foldable[List].foldM(g.edgeIterator.toList, Graph.empty[C, Unit]) { case (g, Edge(src, dst, ())) =>
+  def decorateRandomly[A, B, C, D](g: Graph[A, Unit], b: Gen[B], p: Gen[C])(fn: (A, B, C) => D): Gen[Graph[D, Unit]] =
+    Foldable[List].foldM(g.edgeIterator.toList, Graph.empty[D, Unit]) { case (g, Edge(src, dst, ())) =>
       for {
         v1 <- b
         v2 <- b
-      } yield g.addEdge(Edge(fn(src, v1), fn(dst, v2), ()))
+        v3 <- p
+      } yield g.addEdge(Edge(fn(src, v1, v3), fn(dst, v2, v3), ()))
     }
 
   def genMavenGraphSized(size: Int, maxDeps: Int): Gen[Graph[MavenCoordinate, Unit]] =
     for {
       unVDag <- dag(zip(genMavenGroup, genMavenArt), size, maxDeps)
-      vDag <- decorateRandomly(unVDag, genVersion) { case ((g, a), v) => MavenCoordinate(g, a, v) }
+      vDag <- decorateRandomly(unVDag, genVersion, genPackaging) { case ((g, a), v, p) => MavenCoordinate(g, a, v, p) }
     } yield vDag
 
   val genMavenGraph: Gen[Graph[MavenCoordinate, Unit]] =
@@ -93,7 +99,7 @@ class NormalizerTest extends FunSuite  {
         case None => fail(s"couldn't normalize $g")
         case Some(g) =>
           // Each (group, artifact) pair appears only once in the nodes:
-          g.nodes.groupBy { case MavenCoordinate(g, a, _) => (g, a) }
+          g.nodes.groupBy { case MavenCoordinate(g, a, _, p) => (g, a, p) }
             .foreach { case (_, vs) =>
               assert(vs.size == 1)
             }
